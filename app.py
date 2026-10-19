@@ -89,6 +89,21 @@ document.getElementById("talk").onclick = () => {
     const d = await r.json();
     reply.textContent = d.reply || "";
     status.textContent = "";
+    const audio = await fetch("/api/tts", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text: d.reply || ""})});
+    if (audio.ok) {
+      const blob = await audio.blob();
+      const url = URL.createObjectURL(blob);
+      const a = new Audio(url);
+      a.play();
+    }
+    load();
+  };
+    const text = e.results[0][0].transcript;
+    status.textContent = "поняла: " + text;
+    const r = await fetch("/api/agent", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text})});
+    const d = await r.json();
+    reply.textContent = d.reply || "";
+    status.textContent = "";
     const u = new SpeechSynthesisUtterance(d.reply || "");
     u.lang = "ru-RU";
     u.rate = 0.92;
@@ -125,6 +140,67 @@ def board():
 
 @app.route("/api/agent", methods=["POST"])
 def agent():
+    text = ((request.json or {}).get("text") or "").strip()
+    if not text:
+        return jsonify({"reply": "Привет, я секретутка Жанет. Слушаю тебя."})
+
+    d = load()
+    bookings = d.get("bookings", [])
+    today = now().strftime("%Y-%m-%d")
+    ctx = f"Сегодня {today}. Записи: " + "; ".join(
+        f"{b.get('phone','')[-4:]} {b.get('clock','?')} {b.get('note','')[:30]}" for b in bookings[-15:]
+    ) or "нет"
+
+    try:
+        r = requests.post(
+            "https://api.x.ai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {XAI_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": "grok-3",
+                "messages": [
+                    {"role": "system", "content": f"Ты секретутка Жанет. Говоришь мягко, коротко, на русском. Приветствие: «Привет, я секретутка Жанет». Управляешь календарём Кати. Контекст: {ctx}. Если просят записать — извлеки номер и время, подтверди. Если спрашивают сегодня/завтра — перечисли коротко. 1-2 предложения."},
+                    {"role": "user", "content": text},
+                ],
+                "max_tokens": 120,
+                "temperature": 0.4,
+            },
+            timeout=20,
+        )
+        if r.ok:
+            reply = r.json()["choices"][0]["message"]["content"].strip()
+            import re
+            m = re.search(r"(\d{9,15})", text)
+            cl = re.search(r"(\d{1,2})[:\.]?(\d{2})?", text)
+            if m and any(w in text.lower() for w in ("запиши", "поставь", "забронируй")) and cl:
+                ph = m.group(1)
+                hh = int(cl.group(1))
+                mm = cl.group(2) or "00"
+                clock = f"{hh:02d}:{mm}"
+                d.setdefault("bookings", []).append({"phone": ph, "when": today, "clock": clock, "note": text[:80]})
+                save(d)
+            return jsonify({"reply": reply})
+    except Exception:
+        pass
+    return jsonify({"reply": "Привет, я секретутка Жанет. Слушаю."})
+
+
+@app.route("/api/tts", methods=["POST"])
+def tts():
+    text = ((request.json or {}).get("text") or "").strip()
+    if not text:
+        return "", 400
+    try:
+        r = requests.post(
+            "https://api.x.ai/v1/tts",
+            headers={"Authorization": f"Bearer {XAI_KEY}", "Content-Type": "application/json"},
+            json={"text": text, "voice_id": "liora", "language": "ru", "speed": 0.95},
+            timeout=30,
+        )
+        if r.ok:
+            return app.response_class(r.content, mimetype="audio/mpeg")
+    except Exception:
+        pass
+    return "", 500
     text = ((request.json or {}).get("text") or "").strip()
     if not text:
         return jsonify({"reply": "Привет, я секретутка Жанет. Слушаю."})
