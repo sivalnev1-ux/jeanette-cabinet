@@ -103,29 +103,15 @@ document.getElementById("talk").onclick = () => {
     const d = await r.json();
     reply.textContent = d.reply || "";
     status.textContent = "";
-    const audio = await fetch("/api/tts", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text: d.reply || ""})});
-    if (audio.ok) {
-      const blob = await audio.blob();
-      const url = URL.createObjectURL(blob);
-      const a = new Audio(url);
-      a.play();
-    }
-    load();
-  };
-    const text = e.results[0][0].transcript;
-    status.textContent = "поняла: " + text;
-    const r = await fetch("/api/agent", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text})});
-    const d = await r.json();
-    reply.textContent = d.reply || "";
-    status.textContent = "";
-    const u = new SpeechSynthesisUtterance(d.reply || "");
-    u.lang = "ru-RU";
-    u.rate = 0.92;
-    const voices = speechSynthesis.getVoices();
-    const f = voices.find(v => /female|жен|irina|milena|katya/i.test(v.name)) || voices.find(v => v.lang.startsWith("ru"));
-    if (f) u.voice = f;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
+    try {
+      const audio = await fetch("/api/tts", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text: d.reply || ""})});
+      if (audio.ok) {
+        const blob = await audio.blob();
+        const url = URL.createObjectURL(blob);
+        const a = new Audio(url);
+        a.play().catch(() => {});
+      }
+    } catch(err) {}
     load();
   };
   rec.start();
