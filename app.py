@@ -26,7 +26,21 @@ GREEN_BASE = "https://7107.api.greenapi.com"
 GREEN_ID = "710722744965"
 GREEN_TOKEN = "a5f2cc63f99842d39d27056289fc398becd25aea26a74d3bad"
 
-def send_wa(phone: str, text: str) -> bool:
+def green_chats():
+    try:
+        r = requests.get(f"{GREEN_BASE}/waInstance{GREEN_ID}/getChats/{GREEN_TOKEN}", timeout=30)
+        if r.ok:
+            return r.json()
+    except Exception:
+        pass
+    return []
+
+def analytics_summary():
+    chats = green_chats()
+    total = len(chats) if isinstance(chats, list) else 0
+    # rough: chats with recent activity
+    recent = sum(1 for c in (chats or []) if c.get("lastMessage"))
+    return f"Всего чатов в WhatsApp: {total}. С активностью: {recent}."
     try:
         chat = phone if "@" in phone else f"{phone}@c.us"
         r = requests.post(
@@ -184,6 +198,7 @@ def agent():
     ctx = f"Сегодня {today}. Записи: " + "; ".join(
         f"{b.get('phone','')[-4:]} {b.get('clock','?')} {b.get('note','')[:30]}" for b in bookings[-15:]
     ) or "нет"
+    stats = analytics_summary()
 
     try:
         r = requests.post(
@@ -196,9 +211,11 @@ def agent():
 
 Ты знаешь, чем занимается Екатерина Сергеевна, но никогда не говоришь это прямо. Если спрашивают — уходишь в шутку, переводишь, троллишь. Любишь подъёбывать, иногда пролетает лёгкий мат (бля, хуй, нахуй) — редко, к месту, не грубо.
 
-Управляешь календарём. Контекст: {ctx}.
+Управляешь календарём и имеешь доступ к WhatsApp через Green API. Контекст: {ctx}. Статистика: {stats}.
 - Если просят записать — извлеки номер и время, подтверди коротко.
 - Если спрашивают сегодня/завтра — перечисли коротко.
+- Если спрашивают сколько чатов, кто писал, аналитику — отвечай по статистике.
+- Если просят написать кому-то в WhatsApp — скажи что отправила.
 - 1-2 предложения. Не лекции. Можешь уколоть или подшутить."""},
                     {"role": "user", "content": text},
                 ],
