@@ -104,6 +104,7 @@ async function load() {
 }
 
 let listening = false;
+let speaking = false;
 let rec = null;
 
 document.getElementById("talk").onclick = () => {
@@ -112,33 +113,40 @@ document.getElementById("talk").onclick = () => {
 };
 
 function startListen() {
+  if (speaking) return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { status.textContent = "микрофон не поддерживается, напиши текстом"; return; }
   listening = true;
   document.getElementById("talk").textContent = "Стоп";
+  if (rec) try { rec.abort(); } catch(e) {}
   rec = new SR();
   rec.lang = "ru-RU";
   rec.continuous = false;
   rec.onerror = e => {
-    if (e.error !== "no-speech") status.textContent = "микрофон: " + e.error;
-    if (listening) setTimeout(startListen, 500);
+    if (e.error !== "no-speech" && e.error !== "aborted") status.textContent = "микрофон: " + e.error;
   };
-  rec.onend = () => { if (listening) setTimeout(startListen, 300); };
+  rec.onend = () => {
+    if (listening && !speaking) setTimeout(startListen, 400);
+  };
   rec.onresult = async e => {
+    if (speaking) return;
     const text = e.results[0][0].transcript;
     status.textContent = "поняла: " + text;
+    speaking = true;
     await ask(text);
-    if (listening) setTimeout(startListen, 800);
+    speaking = false;
+    if (listening) setTimeout(startListen, 600);
   };
   status.textContent = "слушаю…";
-  rec.start();
+  try { rec.start(); } catch(e) {}
 }
 
 function stopListen() {
   listening = false;
+  speaking = false;
   document.getElementById("talk").textContent = "Говорить";
   status.textContent = "";
-  if (rec) try { rec.stop(); } catch(e) {}
+  if (rec) try { rec.abort(); } catch(e) {}
 }
 
 document.getElementById("textIn").onkeydown = async e => {
@@ -159,7 +167,7 @@ async function ask(text) {
     if (audio.ok) {
       const blob = await audio.blob();
       const a = new Audio(URL.createObjectURL(blob));
-      a.play().catch(err => { status.textContent = "звук заблокирован браузером"; });
+      await new Promise(res => { a.onended = res; a.onerror = res; a.play().catch(res); });
     }
   } catch(err) { status.textContent = "ошибка звука"; }
   load();
