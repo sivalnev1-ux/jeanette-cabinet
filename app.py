@@ -35,12 +35,19 @@ def green_chats():
         pass
     return []
 
+_stats_cache = {"text": "", "ts": 0}
+
 def analytics_summary():
+    import time
+    if time.time() - _stats_cache["ts"] < 300 and _stats_cache["text"]:
+        return _stats_cache["text"]
     chats = green_chats()
     total = len(chats) if isinstance(chats, list) else 0
-    # rough: chats with recent activity
     recent = sum(1 for c in (chats or []) if c.get("lastMessage"))
-    return f"Всего чатов в WhatsApp: {total}. С активностью: {recent}."
+    text = f"Всего чатов в WhatsApp: {total}. С активностью: {recent}."
+    _stats_cache["text"] = text
+    _stats_cache["ts"] = time.time()
+    return text
     try:
         chat = phone if "@" in phone else f"{phone}@c.us"
         r = requests.post(
@@ -227,8 +234,8 @@ def agent():
 - 1-2 предложения. Не лекции. Можешь уколоть или подшутить."""},
                     {"role": "user", "content": text},
                 ],
-                "max_tokens": 120,
-                "temperature": 0.4,
+                "max_tokens": 80,
+                "temperature": 0.3,
             },
             timeout=20,
         )
