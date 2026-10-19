@@ -68,6 +68,7 @@ def index():
   <h1>Жанет</h1>
   <div class="sub">секретутка</div>
   <button class="talk" id="talk">Говорить</button>
+  <input id="textIn" placeholder="или напиши тут" style="width:100%;margin-top:10px;padding:12px;background:#1a1a1a;color:#eee;border:1px solid #333;border-radius:8px;">
   <div id="status"></div>
   <div id="reply"></div>
   <div class="day" id="today"><h3>Сегодня</h3><div id="todayList"></div></div>
@@ -90,32 +91,43 @@ async function load() {
 
 document.getElementById("talk").onclick = () => {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { status.textContent = "голос не поддерживается"; return; }
+  if (!SR) { status.textContent = "микрофон не поддерживается, напиши текстом"; return; }
   const rec = new SR();
   rec.lang = "ru-RU";
   status.textContent = "слушаю…";
   reply.textContent = "";
-  rec.onerror = e => { status.textContent = "ошибка: " + e.error; };
+  rec.onerror = e => { status.textContent = "микрофон: " + e.error + " — напиши текстом"; };
   rec.onresult = async e => {
     const text = e.results[0][0].transcript;
     status.textContent = "поняла: " + text;
-    const r = await fetch("/api/agent", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text})});
-    const d = await r.json();
-    reply.textContent = d.reply || "";
-    status.textContent = "";
-    try {
-      const audio = await fetch("/api/tts", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text: d.reply || ""})});
-      if (audio.ok) {
-        const blob = await audio.blob();
-        const url = URL.createObjectURL(blob);
-        const a = new Audio(url);
-        a.play().catch(() => {});
-      }
-    } catch(err) {}
-    load();
+    await ask(text);
   };
   rec.start();
 };
+
+document.getElementById("textIn").onkeydown = async e => {
+  if (e.key === "Enter") {
+    const t = e.target.value.trim();
+    if (t) { e.target.value = ""; await ask(t); }
+  }
+};
+
+async function ask(text) {
+  status.textContent = "думаю…";
+  const r = await fetch("/api/agent", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text})});
+  const d = await r.json();
+  reply.textContent = d.reply || "";
+  status.textContent = "отвечаю…";
+  try {
+    const audio = await fetch("/api/tts", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text: d.reply || ""})});
+    if (audio.ok) {
+      const blob = await audio.blob();
+      const a = new Audio(URL.createObjectURL(blob));
+      a.play().catch(err => { status.textContent = "звук заблокирован браузером"; });
+    }
+  } catch(err) { status.textContent = "ошибка звука"; }
+  load();
+}
 
 load();
 setInterval(load, 15000);
