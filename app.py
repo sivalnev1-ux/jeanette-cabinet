@@ -215,7 +215,10 @@ def agent():
     ctx = f"Сегодня {today}. Записи: " + "; ".join(
         f"{b.get('phone','')[-4:]} {b.get('clock','?')} {b.get('note','')[:30]}" for b in bookings[-15:]
     ) or "нет"
-    stats = analytics_summary()
+    # stats only if asked
+    stats = ""
+    if any(w in text.lower() for w in ("сколько", "чат", "аналитик", "кто писал", "статистик")):
+        stats = analytics_summary()
 
     try:
         r = requests.post(
@@ -239,7 +242,7 @@ def agent():
                 "max_tokens": 80,
                 "temperature": 0.3,
             },
-            timeout=20,
+            timeout=12,
         )
         if r.ok:
             reply = r.json()["choices"][0]["message"]["content"].strip()
