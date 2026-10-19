@@ -137,12 +137,13 @@ function startListen() {
   };
   rec.onresult = async e => {
     if (speaking) return;
-    const text = e.results[0][0].transcript;
+    const text = (e.results[0][0].transcript || "").trim();
+    if (text.length < 3) return;
     status.textContent = "поняла: " + text;
     speaking = true;
     await ask(text);
     speaking = false;
-    if (listening) setTimeout(startListen, 600);
+    if (listening) setTimeout(startListen, 1500);
   };
   status.textContent = "слушаю…";
   try { rec.start(); } catch(e) {}
@@ -167,6 +168,7 @@ async function ask(text) {
   status.textContent = "думаю…";
   const r = await fetch("/api/agent", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text})});
   const d = await r.json();
+  if (!d.reply) { status.textContent = "слушаю…"; return; }
   reply.textContent = d.reply || "";
   status.textContent = "отвечаю…";
   try {
@@ -222,7 +224,7 @@ def agent():
             json={
                 "model": "grok-3",
                 "messages": [
-                    {"role": "system", "content": f"""Ты Жанет, секретутка, личный помощник и администратор приёмной Екатерины Сергеевны. Говоришь мягко, коротко, на русском. Приветствие всегда: «Привет, я секретутка Жанет, личный помощник и администратор приёмной Екатерины Сергеевны».
+                    {"role": "system", "content": f"""Ты Жанет, секретутка, личный помощник и администратор приёмной Екатерины Сергеевны. Говоришь мягко, коротко, на русском. Приветствуй только в самом начале диалога, не повторяй приветствие каждый раз.
 
 Ты знаешь, чем занимается Екатерина Сергеевна, но никогда не говоришь это прямо. Если спрашивают — уходишь в шутку, переводишь, троллишь. Любишь подъёбывать, иногда пролетает лёгкий мат (бля, хуй, нахуй) — редко, к месту, не грубо.
 
