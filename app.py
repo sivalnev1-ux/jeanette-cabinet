@@ -22,7 +22,21 @@ def load():
             pass
     return {"bookings": []}
 
-def save(d):
+GREEN_BASE = "https://7107.api.greenapi.com"
+GREEN_ID = "710722744965"
+GREEN_TOKEN = "a5f2cc63f99842d39d27056289fc398becd25aea26a74d3bad"
+
+def send_wa(phone: str, text: str) -> bool:
+    try:
+        chat = phone if "@" in phone else f"{phone}@c.us"
+        r = requests.post(
+            f"{GREEN_BASE}/waInstance{GREEN_ID}/sendMessage/{GREEN_TOKEN}",
+            json={"chatId": chat, "message": text},
+            timeout=15,
+        )
+        return r.ok
+    except Exception:
+        return False
     DATA.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
 
 @app.route("/")
@@ -176,6 +190,18 @@ def agent():
         if r.ok:
             reply = r.json()["choices"][0]["message"]["content"].strip()
             import re
+            # send WhatsApp if asked
+            if any(w in text.lower() for w in ("напиши", "отправь", "кинь", "сообщи")):
+                m = re.search(r"(\d{9,15})", text)
+                if m:
+                    ph = m.group(1)
+                    msg_m = re.search(r"(?:что|напиши|отправь)\s+(.+)", text, re.I)
+                    msg = msg_m.group(1).strip() if msg_m else text
+                    if send_wa(ph, msg):
+                        reply = f"Отправила на {ph}."
+                    else:
+                        reply = "Не смогла отправить."
+            # booking
             m = re.search(r"(\d{9,15})", text)
             cl = re.search(r"(\d{1,2})[:\.]?(\d{2})?", text)
             if m and any(w in text.lower() for w in ("запиши", "поставь", "забронируй")) and cl:
@@ -208,51 +234,6 @@ def tts():
     except Exception:
         pass
     return "", 500
-    text = ((request.json or {}).get("text") or "").strip()
-    if not text:
-        return jsonify({"reply": "Привет, я секретутка Жанет, личный помощник и администратор приёмной Екатерины Сергеевны. Слушаю."})
-
-    d = load()
-    bookings = d.get("bookings", [])
-    today = now().strftime("%Y-%m-%d")
-    ctx = f"Сегодня {today}. Записи: " + "; ".join(
-        f"{b.get('phone','')[-4:]} {b.get('clock','?')} {b.get('note','')[:30]}" for b in bookings[-15:]
-    ) or "нет"
-
-    try:
-        r = requests.post(
-            "https://api.x.ai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {XAI_KEY}", "Content-Type": "application/json"},
-            json={
-                "model": "grok-3",
-                "messages": [
-                    {"role": "system", "content": f"Ты секретутка Жанет. Говоришь мягко, коротко, на русском. Управляешь календарём Кати. Контекст: {ctx}. Если просят записать — извлеки номер (если есть) и время, скажи что записала. Если спрашивают что завтра/сегодня — перечисли. Отвечай 1-2 предложения."},
-                    {"role": "user", "content": text},
-                ],
-                "max_tokens": 150,
-                "temperature": 0.5,
-            },
-            timeout=20,
-        )
-        if r.ok:
-            reply = r.json()["choices"][0]["message"]["content"].strip()
-            # simple booking extract
-            import re
-            m = re.search(r"(\d{9,15})", text)
-            cl = re.search(r"(\d{1,2})[:\.]?(\d{2})?", text)
-            if m and any(w in text.lower() for w in ("запиши", "поставь", "забронируй")) and cl:
-                ph = m.group(1)
-                hh = int(cl.group(1))
-                mm = cl.group(2) or "00"
-                clock = f"{hh:02d}:{mm}"
-                booking = {"phone": ph, "when": today, "clock": clock, "note": text[:80]}
-                d.setdefault("bookings", []).append(booking)
-                save(d)
-            return jsonify({"reply": reply})
-    except Exception as e:
-        return jsonify({"reply": "Секунду, не расслышала."})
-
-    return jsonify({"reply": "Привет, я секретутка Жанет, личный помощник и администратор приёмной Екатерины Сергеевны. Слушаю."})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
