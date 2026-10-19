@@ -89,21 +89,43 @@ async function load() {
   ).join("") || "<div class='slot' style='color:#666'>пусто</div>";
 }
 
+let listening = false;
+let rec = null;
+
 document.getElementById("talk").onclick = () => {
+  if (listening) { stopListen(); return; }
+  startListen();
+};
+
+function startListen() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { status.textContent = "микрофон не поддерживается, напиши текстом"; return; }
-  const rec = new SR();
+  listening = true;
+  document.getElementById("talk").textContent = "Стоп";
+  rec = new SR();
   rec.lang = "ru-RU";
-  status.textContent = "слушаю…";
-  reply.textContent = "";
-  rec.onerror = e => { status.textContent = "микрофон: " + e.error + " — напиши текстом"; };
+  rec.continuous = false;
+  rec.onerror = e => {
+    if (e.error !== "no-speech") status.textContent = "микрофон: " + e.error;
+    if (listening) setTimeout(startListen, 500);
+  };
+  rec.onend = () => { if (listening) setTimeout(startListen, 300); };
   rec.onresult = async e => {
     const text = e.results[0][0].transcript;
     status.textContent = "поняла: " + text;
     await ask(text);
+    if (listening) setTimeout(startListen, 800);
   };
+  status.textContent = "слушаю…";
   rec.start();
-};
+}
+
+function stopListen() {
+  listening = false;
+  document.getElementById("talk").textContent = "Говорить";
+  status.textContent = "";
+  if (rec) try { rec.stop(); } catch(e) {}
+}
 
 document.getElementById("textIn").onkeydown = async e => {
   if (e.key === "Enter") {
